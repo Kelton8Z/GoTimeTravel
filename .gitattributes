@@ -1,0 +1,3 @@
+* filter=xet diff=xet merge=xet -text
+*.gitattributes filter=
+*.xet/** filter=
