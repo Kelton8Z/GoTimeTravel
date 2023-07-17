@@ -1,0 +1,1 @@
+GoTimeTravel visualizes how the ancient game of Go has evolved over time by showing the different moves preferred by models trained from top professional games from 1600s to today given a specific board position.
