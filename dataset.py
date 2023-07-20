@@ -48,9 +48,9 @@ for i, game_file in enumerate(training_game_files):
         except:
             with codecs.open(game_file, 'r', encoding='gbk') as f:
                 contents = f.read()
-
-    # contents = contents.replace('\n', "")
-    # print(contents)
+    # add missing ; in the pdg dataset as valid sgf defines properties with (;
+    if contents[0] == "(" and contents[1] != ";":
+        contents = contents[:1] + ";" + contents[2:]
     game = sgf.Sgf_game.from_string(contents)
     board, plays = sgf_moves.get_setup_and_moves(game)
     for color, move in plays:
@@ -58,7 +58,6 @@ for i, game_file in enumerate(training_game_files):
         row, col = move
         tp = training_point(board, move, color)
         training_points.append(tp)
-        board.play(row, col, color)
         num_moves += 1
 
 print('Total training moves: %s' % len(training_points))
