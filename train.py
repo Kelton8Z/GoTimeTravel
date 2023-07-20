@@ -56,4 +56,4 @@ torch.save({'epoch': 1000,
               'optimizer_state_dict': optimizer.state_dict(),
               'loss': losses[-1],
               'acc': accuracies[-1]}, 
-        './CNN_model_checkpoint.pth')
+        './CNN_afterAImodel_checkpoint.pth')

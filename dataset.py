@@ -14,7 +14,24 @@ def training_point(board, move, color):
         board_array[0, p[1][0], p[1][1]] = -1.0 + 2 * int(p[0] == color)
     return board_array, move[0]*BOARD_SIZE+move[1]
 
-training_game_files = game_files[:NUM_TRAINING_GAMES]
+afterAIfiles = []
+# ALL_PATH = 'pgd/All/'
+# NEW_PATH = 'pgd/New/'
+# years = []
+# for Path in [ALL_PATH, NEW_PATH]:
+#     for r, d, f in os.walk(Path):
+for filePath in game_files:
+    if '.sgf' in filePath:
+        parts = filePath.split("/")
+        if len(parts) > 3:
+            fileName = parts[3]
+            year = fileName[:4]
+            if year.isdigit():
+                if int(year) >= 2016:
+                    afterAIfiles.append(filePath)
+
+print(len(afterAIfiles))
+training_game_files = afterAIfiles
 training_points = []
 for i, game_file in enumerate(training_game_files):
     print('Processing %s/%s: %s' % (i, len(training_game_files), game_file))
@@ -25,10 +42,15 @@ for i, game_file in enumerate(training_game_files):
         with codecs.open(game_file, 'r', encoding='gb2312') as f:
             contents = f.read()
     except UnicodeDecodeError:
-        # try:
-        with codecs.open(game_file, 'r', encoding='gbk') as f:
-            contents = f.read()
+        try:
+            with codecs.open(game_file, 'r', encoding='utf-8') as f:
+                contents = f.read()
+        except:
+            with codecs.open(game_file, 'r', encoding='gbk') as f:
+                contents = f.read()
 
+    # contents = contents.replace('\n', "")
+    # print(contents)
     game = sgf.Sgf_game.from_string(contents)
     board, plays = sgf_moves.get_setup_and_moves(game)
     for color, move in plays:
@@ -38,6 +60,7 @@ for i, game_file in enumerate(training_game_files):
         training_points.append(tp)
         board.play(row, col, color)
         num_moves += 1
+
 print('Total training moves: %s' % len(training_points))
 
 class GoDataset(torch.utils.data.Dataset):
