@@ -49,4 +49,11 @@ for epoch in range(0, 1000):
     losses.extend(train(model, device, train_loader, optimizer, epoch))
     accuracies.append(test(model, device, train_loader))
     print(accuracies[-1])
-losses = [item for sublist in losses for item in sublist]
+# losses = [item for sublist in losses for item in sublist]
+
+torch.save({'epoch': 1000,
+              'model_state_dict': model.state_dict(),
+              'optimizer_state_dict': optimizer.state_dict(),
+              'loss': losses[-1],
+              'acc': accuracies[-1]}, 
+        './CNN_model_checkpoint.pth')

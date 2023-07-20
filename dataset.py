@@ -3,8 +3,8 @@ import torch
 from sgfmill import sgf, sgf_moves
 import codecs
 
-BOARD_SIZE = 19
-NUM_TRAINING_GAMES = 1
+from config import BOARD_SIZE, NUM_TRAINING_GAMES
+
 
 game_files = os.popen("""find . -type f | grep '.sgf'""").read().split('\n')[:-1]
 

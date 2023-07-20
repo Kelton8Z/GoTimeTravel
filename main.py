@@ -1,3 +1,4 @@
+import torch
 import pygame
 import numpy as np
 import itertools
@@ -5,6 +6,19 @@ import sys
 import networkx as nx
 import collections
 from pygame import gfxdraw
+from model import CNN, data_point
+from sgfmill.boards import Board
+
+from config import BOARD_SIZE
+
+preAImodel = CNN()   
+checkpoint = torch.load("model_checkpoint.pth")
+preAImodel.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+
+postAImodel = CNN()  
+preAImodel.load_state_dict(checkpoint['model_state_dict'])
 
 
 # Game constants
@@ -13,6 +27,15 @@ BOARD_WIDTH = 1000
 BOARD_BORDER = 75
 STONE_RADIUS = 22
 WHITE = (255, 255, 255)
+
+'''
+Light Grey: RGB(211, 211, 211)
+Silver: RGB(192, 192, 192)
+Dark Grey: RGB(169, 169, 169)
+Grey: RGB(128, 128, 128)
+Dim Grey: RGB(105, 105, 105)
+'''
+GREY = (128, 128, 128)
 BLACK = (0, 0, 0)
 TURN_POS = (BOARD_BORDER, 20)
 SCORE_POS = (BOARD_BORDER, BOARD_WIDTH - BOARD_BORDER + 30)
@@ -240,12 +263,41 @@ class Game:
             gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, WHITE)
             gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, WHITE)
 
+        
+        sgfmill_board = Board(19)
+        black_points = list(zip(*np.where(self.board==1)))
+        white_points = list(zip(*np.where(self.board==2)))
+        empty_points = list(zip(*np.where(self.board==0)))
+        sgfmill_board.apply_setup(black_points, white_points, empty_points)
+        placeholder_move = (-1, -1)
+        board, _ = data_point(sgfmill_board, placeholder_move, "black" if self.black_turn else "white")
+        output = postAImodel(board)
+        prediction = output.argmax(dim=1, keepdim=True)
+        x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
+
+        post_AI_POS = colrow_to_xy(x, y, self.size)
+        
+        pointer = self.font.render("a", True, BLACK)
+        text_rect = pointer.get_rect()
+        post_AI_POS_ADJUSTED = (post_AI_POS[0] - text_rect.width // 2, post_AI_POS[1] - text_rect.height // 2)
+        self.screen.blit(pointer, post_AI_POS_ADJUSTED)
+
+        # x, y = preAImodel(self.board, self.black_turn)
+        # pre_AI_POS = colrow_to_xy(x, y, self.size)
+        
+        # pointer = self.font.render("b", True, BLACK)
+        # text_rect = pointer.get_rect()
+        # pre_AI_POS_ADJUSTED = (pre_AI_POS[0] - text_rect.width // 2, pre_AI_POS[1] - text_rect.height // 2)
+        # self.screen.blit(pointer, pre_AI_POS_ADJUSTED)
+
         # text for score and turn info
         score_msg = (
             f"Black's Prisoners: {self.prisoners['black']}"
             + f"     White's Prisoners: {self.prisoners['white']}"
         )
         txt = self.font.render(score_msg, True, BLACK)
+
+        # blit() sends text to the screen
         self.screen.blit(txt, SCORE_POS)
         turn_msg = (
             f"{'Black' if self.black_turn else 'White'} to move. "
@@ -253,7 +305,8 @@ class Game:
         )
         txt = self.font.render(turn_msg, True, BLACK)
         self.screen.blit(txt, TURN_POS)
-
+        
+        # flip() updates the screen with new shapes
         pygame.display.flip()
 
     def update(self):
@@ -278,3 +331,5 @@ if __name__ == "__main__":
     while True:
         g.update()
         pygame.time.wait(100)
+
+    
