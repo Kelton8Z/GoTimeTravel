@@ -132,38 +132,38 @@ class Features:
 
             if move_idx >= 2 and moves[move_idx-2][0] == pla:
                 prev2_loc = moves[move_idx-2][1]
-                if prev2_loc is not None and prev2_loc != board.Board.PASS_LOC:
+                if prev2_loc is not None and prev2_loc != kataboard.Board.PASS_LOC:
                     pos = self.loc_to_tensor_pos(prev2_loc,board)
                     bin_input_data[idx,pos,10] = 1.0
-                elif prev2_loc == board.Board.PASS_LOC:
+                elif prev2_loc == kataboard.Board.PASS_LOC:
                     global_input_data[idx,1] = 1.0
 
                 if move_idx >= 3 and moves[move_idx-3][0] == opp:
                     prev3_loc = moves[move_idx-3][1]
-                    if prev3_loc is not None and prev3_loc != board.Board.PASS_LOC:
+                    if prev3_loc is not None and prev3_loc != kataboard.Board.PASS_LOC:
                         pos = self.loc_to_tensor_pos(prev3_loc,board)
                         bin_input_data[idx,pos,11] = 1.0
-                    elif prev3_loc == board.Board.PASS_LOC:
+                    elif prev3_loc == kataboard.Board.PASS_LOC:
                         global_input_data[idx,2] = 1.0
 
                     if move_idx >= 4 and moves[move_idx-4][0] == pla:
                         prev4_loc = moves[move_idx-4][1]
-                        if prev4_loc is not None and prev4_loc != board.Board.PASS_LOC:
+                        if prev4_loc is not None and prev4_loc != kataboard.Board.PASS_LOC:
                             pos = self.loc_to_tensor_pos(prev4_loc,board)
                             bin_input_data[idx,pos,12] = 1.0
-                        elif prev4_loc == board.Board.PASS_LOC:
+                        elif prev4_loc == kataboard.Board.PASS_LOC:
                             global_input_data[idx,3] = 1.0
 
                         if move_idx >= 5 and moves[move_idx-5][0] == opp:
                             prev5_loc = moves[move_idx-5][1]
-                            if prev5_loc is not None and prev5_loc != board.Board.PASS_LOC:
+                            if prev5_loc is not None and prev5_loc != kataboard.Board.PASS_LOC:
                                 pos = self.loc_to_tensor_pos(prev5_loc,board)
                                 bin_input_data[idx,pos,13] = 1.0
-                            elif prev5_loc == board.Board.PASS_LOC:
+                            elif prev5_loc == kataboard.Board.PASS_LOC:
                                 global_input_data[idx,4] = 1.0
 
         def addLadderFeature(loc,pos,workingMoves):
-            assert(board.board[loc] == board.Board.BLACK or board.board[loc] == board.Board.WHITE)
+            assert(board.board[loc] == kataboard.Board.BLACK or board.board[loc] == kataboard.Board.WHITE)
             bin_input_data[idx,pos,14] = 1.0
             if board.board[loc] == opp and board.num_liberties(loc) > 1:
                 for workingMove in workingMoves:
@@ -177,7 +177,7 @@ class Features:
         else:
             prevBoard = board
         def addPrevLadderFeature(loc,pos,workingMoves):
-            assert(prevboard.Board.board[loc] == board.Board.BLACK or prevboard.Board.board[loc] == board.Board.WHITE)
+            assert(prevboard.Board.board[loc] == kataboard.Board.BLACK or prevboard.Board.board[loc] == kataboard.Board.WHITE)
             bin_input_data[idx,pos,15] = 1.0
         self.iterLadders(prevBoard, addPrevLadderFeature)
 
@@ -186,7 +186,7 @@ class Features:
         else:
             prevPrevBoard = prevBoard
         def addPrevPrevLadderFeature(loc,pos,workingMoves):
-            assert(prevPrevboard.Board.board[loc] == board.Board.BLACK or prevPrevboard.Board.board[loc] == board.Board.WHITE)
+            assert(prevPrevboard.Board.board[loc] == kataboard.Board.BLACK or prevPrevboard.Board.board[loc] == kataboard.Board.WHITE)
             bin_input_data[idx,pos,16] = 1.0
         self.iterLadders(prevPrevBoard, addPrevPrevLadderFeature)
 
@@ -306,7 +306,7 @@ class Features:
         global_input_data[idx,15] = 1.0 if rules["asymPowersOfTwo"] != 0 else 0.0
         global_input_data[idx,16] = rules["asymPowersOfTwo"]
 
-        if "hasButton" in rules and rules["hasButton"] and board.Board.PASS_LOC not in [move[1] for move in moves]:
+        if "hasButton" in rules and rules["hasButton"] and kataboard.Board.PASS_LOC not in [move[1] for move in moves]:
             global_input_data[idx,17] = 1.0
 
         if rules["scoringRule"] == "SCORING_AREA" or rules["encorePhase"] > 1:

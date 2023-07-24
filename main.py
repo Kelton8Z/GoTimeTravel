@@ -1,4 +1,5 @@
 # import tensorflow as tf
+import copy
 import torch
 import pygame
 import numpy as np
@@ -83,9 +84,8 @@ feats = features.Features(model_config, BOARD_SIZE)
 
 def get_input_feature(gs, rules, feature_idx):
     board = gs.board
-    print("shape ", board.board.shape)
-    print("bin shape ", preAImodel.bin_input_shape)
-    print("global shape ", preAImodel.global_input_shape)
+    assert(preAImodel.bin_input_shape==[22, 19, 19])
+    assert(preAImodel.global_input_shape==[19])
     bin_input_data = np.zeros(shape=[1] + [361, 22], dtype=np.float32)
     global_input_data = np.zeros(
         shape=[1] + preAImodel.global_input_shape, dtype=np.float32
@@ -93,8 +93,10 @@ def get_input_feature(gs, rules, feature_idx):
     pla = board.pla
     opp = KataBoard.get_opp(pla)
     move_idx = len(gs.moves)
-    old_bin = bin_input_data
-    old_global = global_input_data
+        
+    old_bin = copy.copy(bin_input_data)
+    old_global = copy.copy(global_input_data)
+
     feats.fill_row_features(
         board,
         pla,
@@ -107,8 +109,9 @@ def get_input_feature(gs, rules, feature_idx):
         global_input_data,
         idx=0,
     )
-    assert(np.all(old_bin==bin_input_data))
-    assert(np.all(old_global==global_input_data))
+
+    assert(np.any(old_bin!=bin_input_data))
+    assert(np.any(old_global!=global_input_data))
     locs_and_values = []
     for y in range(board.size):
         for x in range(board.size):
@@ -343,36 +346,33 @@ class Game:
         white_points = list(zip(*np.where(self.board == 2)))
         empty_points = list(zip(*np.where(self.board == 0)))
         sgfmill_board.apply_setup(black_points, white_points, empty_points)
-        print("sgf board ", sgfmill_board)
+
         placeholder_move = (-1, -1)
         board, _ = data_point(
             sgfmill_board, placeholder_move, "black" if self.black_turn else "white"
         )
-        # board is of dimension (1, 19, 19)
-        # gs.board.board = board.flatten()
 
-        # pla = gs.board.pla
-        # opp = KataBoard.get_opp(pla)
-        # move_idx = len(gs.moves)
-        print("board shape ", board.shape)
+        assert(board.shape==(1,19,19))
         num_bin_input_features = modelconfigs.get_num_bin_input_features(model_config)
         input_spatial = board.unsqueeze(0).repeat(num_bin_input_features, 1, 1, 1) #board[np.newaxis, :, :]  # feature plane, batch, 19, 19
-        print("spatial shape ", input_spatial.shape)
-        input_global = np.zeros(
-            shape=[1] + postAImodel.global_input_shape, dtype=np.float32
-        )
-        # feats.fill_row_features(gs.board, pla, opp, gs.boards, gs.moves, move_idx, rules, input_spatial, input_global, idx=0)
-        print("bin shape ", preAImodel.bin_input_shape)
+        assert(input_spatial.shape==(22,1,19,19))
+
+        old_spatial = copy.copy(input_spatial)
+        
         for feature_idx in range(num_bin_input_features):
             locs_and_values, global_input_feature = get_input_feature(gs, rules, feature_idx) # a list of (loc, bin_input_data[0, pos, feature_idx]) across positions
             for loc, value in locs_and_values:
                 input_spatial[feature_idx, 0, KataBoard.loc_x(gs.board, loc), KataBoard.loc_y(gs.board, loc)] = torch.from_numpy(np.array(value))
                 
         assert gs.board.board.shape == (421,)
-        input_global[0] = global_input_feature
+        input_global = torch.from_numpy(global_input_feature)
+
+        # assert(np.any(old_global!=input_global))
+        # if gs.moves:
+        #     assert(torch.any(old_spatial!=input_spatial))
         
         input_spatial = input_spatial.permute(1, 0, 2, 3)
-        output, _ = postAImodel(input_spatial, torch.from_numpy(input_global))
+        output, _ = postAImodel(input_spatial, input_global)
 
         '''out_value typically represents the model's estimate of the expected outcome of the game from the current position (e.g., the probability of winning).
             out_futurepos is a more advanced feature that might represent some form of prediction about future board positions.
@@ -390,6 +390,15 @@ class Game:
         x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
         
         print("Prediction: ({}, {})".format(x, y))
+
+        # make a play and update game state
+        loc = gs.board.loc(x, y)
+        pla = gs.board.pla
+
+        gs.board.play(pla,loc)
+        gs.moves.append((pla,loc))
+        gs.boards.append(gs.board.copy())
+
         post_AI_POS = colrow_to_xy(x, y, self.size)
 
         pointer = self.font.render("a", True, BLACK)
