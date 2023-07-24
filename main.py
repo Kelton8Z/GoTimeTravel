@@ -1,3 +1,4 @@
+# import tensorflow as tf
 import torch
 import pygame
 import numpy as np
@@ -7,19 +8,35 @@ import networkx as nx
 import collections
 from pygame import gfxdraw
 from model import CNN, data_point
-from sgfmill.boards import Board
+from models.katago import modelconfigs, features
+from models.katago.load import load_model
+from models.katago.board import Board as KataBoard
+from models.katago.model_pytorch import Model
+from sgfmill.boards import Board as SgfBoard
 
-from config import BOARD_SIZE
+from config import BOARD_SIZE, device
 
-preAImodel = CNN()   
-checkpoint = torch.load("model_checkpoint.pth")
-preAImodel.load_state_dict(checkpoint['model_state_dict'])
+# preAImodel = CNN()
+# checkpoint = torch.load("CNN_afterAImodel_1epoch.pth")
+# preAImodel.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# postAImodel = CNN()
+# preAImodel.load_state_dict(checkpoint['model_state_dict'])
 
-
-postAImodel = CNN()  
-preAImodel.load_state_dict(checkpoint['model_state_dict'])
-
+model_kind = "b18c384nbt"
+# model_kind = "b6c96"
+model_config = modelconfigs.config_of_name[model_kind]
+preAImodel = Model(model_config, BOARD_SIZE)
+postAImodel = Model(model_config, BOARD_SIZE)
+ckpt_file = "./models/katago/kata1-b18c384nbt-s7041524736-d3540025399/model.ckpt"
+# checkpoint = torch.load("CNN_afterAImodel_1epoch.pth")
+# checkpoint = torch.load("./models/katago/kata1-b18c384nbt-s6981484800-d3524616345/model.ckpt")
+use_swa = False
+ckpt, swa_checkpoint, _ = load_model(
+    ckpt_file, use_swa, device
+)  # return (model, swa_model, other_state_dict)
+preAImodel = ckpt  # .load_state_dict(swa_checkpoint)
+postAImodel = ckpt  # .load_state_dict(swa_checkpoint)
 
 # Game constants
 BOARD_BROWN = (199, 105, 42)
@@ -28,18 +45,77 @@ BOARD_BORDER = 75
 STONE_RADIUS = 22
 WHITE = (255, 255, 255)
 
-'''
+"""
 Light Grey: RGB(211, 211, 211)
 Silver: RGB(192, 192, 192)
 Dark Grey: RGB(169, 169, 169)
 Grey: RGB(128, 128, 128)
 Dim Grey: RGB(105, 105, 105)
-'''
+"""
 GREY = (128, 128, 128)
 BLACK = (0, 0, 0)
 TURN_POS = (BOARD_BORDER, 20)
 SCORE_POS = (BOARD_BORDER, BOARD_WIDTH - BOARD_BORDER + 30)
 DOT_RADIUS = 4
+
+
+class GameState:
+    def __init__(self, board_size):
+        self.board_size = board_size
+        self.board = KataBoard(size=board_size)
+        self.moves = []
+        self.boards = [self.board.copy()]
+
+
+gs = GameState(BOARD_SIZE)
+rules = {
+    "koRule": "KO_POSITIONAL",
+    "scoringRule": "SCORING_AREA",
+    "taxRule": "TAX_NONE",
+    "multiStoneSuicideLegal": True,
+    "hasButton": False,
+    "encorePhase": 0,
+    "passWouldEndPhase": False,
+    "whiteKomi": 7.5,
+    "asymPowersOfTwo": 0.0,
+}
+feats = features.Features(model_config, BOARD_SIZE)
+
+def get_input_feature(gs, rules, feature_idx):
+    board = gs.board
+    print("shape ", board.board.shape)
+    print("bin shape ", preAImodel.bin_input_shape)
+    print("global shape ", preAImodel.global_input_shape)
+    bin_input_data = np.zeros(shape=[1] + [361, 22], dtype=np.float32)
+    global_input_data = np.zeros(
+        shape=[1] + preAImodel.global_input_shape, dtype=np.float32
+    )
+    pla = board.pla
+    opp = KataBoard.get_opp(pla)
+    move_idx = len(gs.moves)
+    old_bin = bin_input_data
+    old_global = global_input_data
+    feats.fill_row_features(
+        board,
+        pla,
+        opp,
+        gs.boards,
+        gs.moves,
+        move_idx,
+        rules,
+        bin_input_data,
+        global_input_data,
+        idx=0,
+    )
+    assert(np.all(old_bin==bin_input_data))
+    assert(np.all(old_global==global_input_data))
+    locs_and_values = []
+    for y in range(board.size):
+        for x in range(board.size):
+            loc = board.loc(x, y)
+            pos = feats.loc_to_tensor_pos(loc, board)
+            locs_and_values.append((loc, bin_input_data[0, pos, feature_idx]))
+    return locs_and_values, global_input_data
 
 
 def make_grid(size):
@@ -191,7 +267,6 @@ class Game:
         self.font = pygame.font.SysFont("arial", 30)
 
     def clear_screen(self):
-
         # fill board and add gridlines
         self.screen.fill(BOARD_BROWN)
         for start_point, end_point in zip(self.start_points, self.end_points):
@@ -263,28 +338,71 @@ class Game:
             gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, WHITE)
             gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, WHITE)
 
-        
-        sgfmill_board = Board(19)
-        black_points = list(zip(*np.where(self.board==1)))
-        white_points = list(zip(*np.where(self.board==2)))
-        empty_points = list(zip(*np.where(self.board==0)))
+        sgfmill_board = SgfBoard(19)
+        black_points = list(zip(*np.where(self.board == 1)))
+        white_points = list(zip(*np.where(self.board == 2)))
+        empty_points = list(zip(*np.where(self.board == 0)))
         sgfmill_board.apply_setup(black_points, white_points, empty_points)
+        print("sgf board ", sgfmill_board)
         placeholder_move = (-1, -1)
-        board, _ = data_point(sgfmill_board, placeholder_move, "black" if self.black_turn else "white")
-        output = postAImodel(board)
-        prediction = output.argmax(dim=1, keepdim=True)
-        x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
+        board, _ = data_point(
+            sgfmill_board, placeholder_move, "black" if self.black_turn else "white"
+        )
+        # board is of dimension (1, 19, 19)
+        # gs.board.board = board.flatten()
 
-        post_AI_POS = colrow_to_xy(x, y, self.size)
+        # pla = gs.board.pla
+        # opp = KataBoard.get_opp(pla)
+        # move_idx = len(gs.moves)
+        print("board shape ", board.shape)
+        num_bin_input_features = modelconfigs.get_num_bin_input_features(model_config)
+        input_spatial = board.unsqueeze(0).repeat(num_bin_input_features, 1, 1, 1) #board[np.newaxis, :, :]  # feature plane, batch, 19, 19
+        print("spatial shape ", input_spatial.shape)
+        input_global = np.zeros(
+            shape=[1] + postAImodel.global_input_shape, dtype=np.float32
+        )
+        # feats.fill_row_features(gs.board, pla, opp, gs.boards, gs.moves, move_idx, rules, input_spatial, input_global, idx=0)
+        print("bin shape ", preAImodel.bin_input_shape)
+        for feature_idx in range(num_bin_input_features):
+            locs_and_values, global_input_feature = get_input_feature(gs, rules, feature_idx) # a list of (loc, bin_input_data[0, pos, feature_idx]) across positions
+            for loc, value in locs_and_values:
+                input_spatial[feature_idx, 0, KataBoard.loc_x(gs.board, loc), KataBoard.loc_y(gs.board, loc)] = torch.from_numpy(np.array(value))
+                
+        assert gs.board.board.shape == (421,)
+        input_global[0] = global_input_feature
         
+        input_spatial = input_spatial.permute(1, 0, 2, 3)
+        output, _ = postAImodel(input_spatial, torch.from_numpy(input_global))
+
+        '''out_value typically represents the model's estimate of the expected outcome of the game from the current position (e.g., the probability of winning).
+            out_futurepos is a more advanced feature that might represent some form of prediction about future board positions.
+            out_seki, out_ownership, out_scoring, and out_scorebelief_logprobs likely provide various forms of information about the current state of the board or predictions about the final outcome, but aren't directly useful for choosing a move.
+        '''
+        out_policy, out_value, out_miscvalue, out_moremiscvalue, out_ownership, out_scoring, out_futurepos, out_seki, out_scorebelief_logprobs = output
+        # out_policy (1, num_moves, board_size)
+        # First, reshape the tensor to flatten the last two dimensions
+        out_policy_flattened = out_policy.view(out_policy.shape[0], -1)
+
+        # Then, use argmax to find the index of the highest score
+        prediction = out_policy_flattened.argmax(dim=1)
+
+        # prediction = out_policy.argmax(dim=1, keepdim=True)
+        x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
+        
+        print("Prediction: ({}, {})".format(x, y))
+        post_AI_POS = colrow_to_xy(x, y, self.size)
+
         pointer = self.font.render("a", True, BLACK)
         text_rect = pointer.get_rect()
-        post_AI_POS_ADJUSTED = (post_AI_POS[0] - text_rect.width // 2, post_AI_POS[1] - text_rect.height // 2)
+        post_AI_POS_ADJUSTED = (
+            post_AI_POS[0] - text_rect.width // 2,
+            post_AI_POS[1] - text_rect.height // 2,
+        )
         self.screen.blit(pointer, post_AI_POS_ADJUSTED)
 
         # x, y = preAImodel(self.board, self.black_turn)
         # pre_AI_POS = colrow_to_xy(x, y, self.size)
-        
+
         # pointer = self.font.render("b", True, BLACK)
         # text_rect = pointer.get_rect()
         # pre_AI_POS_ADJUSTED = (pre_AI_POS[0] - text_rect.width // 2, pre_AI_POS[1] - text_rect.height // 2)
@@ -305,7 +423,7 @@ class Game:
         )
         txt = self.font.render(turn_msg, True, BLACK)
         self.screen.blit(txt, TURN_POS)
-        
+
         # flip() updates the screen with new shapes
         pygame.display.flip()
 
@@ -331,5 +449,3 @@ if __name__ == "__main__":
     while True:
         g.update()
         pygame.time.wait(100)
-
-    
