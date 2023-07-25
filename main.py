@@ -1,5 +1,6 @@
 # import tensorflow as tf
 import copy
+import time
 import torch
 import pygame
 import numpy as np
@@ -292,7 +293,7 @@ class Game:
         self.draw()
         col, row = self.x, self.y
         # update board array
-        self.board[col, row] = 1 if self.black_turn else 2
+        # self.board[col, row] = 1 if self.black_turn else 2
 
         # get stone groups for black and white
         self_color = "black" if self.black_turn else "white"
@@ -497,6 +498,7 @@ class Game:
             f"{'Black' if self.black_turn else 'White'} to move. "
             + "Click to place stone, press P to pass."
         )
+
         txt = self.font.render(turn_msg, True, BLACK)
         self.screen.blit(txt, TURN_POS)
 
@@ -521,7 +523,6 @@ if __name__ == "__main__":
     g = Game(size=19)
     g.init_pygame()
     g.clear_screen()
-    g.draw()
 
     while True:
         g.update()
