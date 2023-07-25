@@ -2,7 +2,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from model import CNN 
-from dataset import train_loader #, test_loader
+from dataset import train_loader, test_loader
 from config import device
 
 def train(model, device, train_loader, optimizer, epoch):
@@ -47,7 +47,7 @@ losses = []
 accuracies = []
 for epoch in range(0, 1000):
     losses.extend(train(model, device, train_loader, optimizer, epoch))
-    accuracies.append(test(model, device, train_loader))
+    accuracies.append(test(model, device, test_loader))
     print(accuracies[-1])
 # losses = [item for sublist in losses for item in sublist]
 
