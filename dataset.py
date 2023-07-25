@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 from sgfmill import sgf, sgf_moves
 import codecs
@@ -10,7 +11,7 @@ game_files = os.popen("""find . -type f | grep '.sgf'""").read().split('\n')[:-1
 def training_point(board, move, color):
     board_array = torch.zeros((1, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
     for p in board.list_occupied_points():
-        board_array[0, p[1][0], p[1][1]] = -1.0 + 2 * int(p[0] == color)
+        board_array[0, p[1][0], p[1][1]] = 1 if p[0] == 'b' else 2 #-1.0 + 2 * int(p[0] == color)
     return board_array, move[0]*BOARD_SIZE+move[1]
 
 afterAIfiles = []
@@ -58,8 +59,12 @@ def get_training_data(train_or_test):
         if contents[0] == "(" and contents[1] != ";":
             contents = contents[:1] + ";" + contents[2:]
 
+
         game = sgf.Sgf_game.from_string(contents)
         board, plays = sgf_moves.get_setup_and_moves(game)
+
+        assert all(all(cell is None for cell in row) for row in board.board) # board starts out as empty
+
         for color, move in plays:
             if move is None: continue
             row, col = move
@@ -68,6 +73,8 @@ def get_training_data(train_or_test):
                 training_points.append(tp)
             else:
                 testing_points.append(tp)
+            if not board.board[row][col]:
+                board.play(row, col, color)
             num_moves += 1
 
     print(f'Total %s moves: %s', "training" if train_or_test == "train" else "testing", len(training_points) if train_or_test == "train" else len(testing_points))
@@ -87,3 +94,9 @@ training_dataset = GoDataset(training_points)
 test_dataset = GoDataset(testing_points)
 train_loader = torch.utils.data.DataLoader(training_dataset, batch_size=64, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1000, shuffle=True)
+
+for batch_idx, (data, target) in enumerate(train_loader):
+    print(f'A batch has {data.shape} and {target.shape}')
+    print(data)
+    print(target)
+    break
