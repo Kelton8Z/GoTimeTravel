@@ -177,7 +177,7 @@ class Features:
         else:
             prevBoard = board
         def addPrevLadderFeature(loc,pos,workingMoves):
-            assert(prevboard.Board.board[loc] == kataboard.Board.BLACK or prevboard.Board.board[loc] == kataboard.Board.WHITE)
+            assert(prevBoard.board[loc] == kataboard.Board.BLACK or prevBoard.board[loc] == kataboard.Board.WHITE)
             bin_input_data[idx,pos,15] = 1.0
         self.iterLadders(prevBoard, addPrevLadderFeature)
 
@@ -186,7 +186,7 @@ class Features:
         else:
             prevPrevBoard = prevBoard
         def addPrevPrevLadderFeature(loc,pos,workingMoves):
-            assert(prevPrevboard.Board.board[loc] == kataboard.Board.BLACK or prevPrevboard.Board.board[loc] == kataboard.Board.WHITE)
+            assert(prevPrevBoard.board[loc] == kataboard.Board.BLACK or prevPrevBoard.board[loc] == kataboard.Board.WHITE)
             bin_input_data[idx,pos,16] = 1.0
         self.iterLadders(prevPrevBoard, addPrevPrevLadderFeature)
 

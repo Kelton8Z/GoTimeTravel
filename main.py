@@ -288,6 +288,41 @@ class Game:
         self.black_turn = not self.black_turn
         self.draw()
 
+    def play(self):
+        self.draw()
+        col, row = self.x, self.y
+        # update board array
+        self.board[col, row] = 1 if self.black_turn else 2
+
+        # get stone groups for black and white
+        self_color = "black" if self.black_turn else "white"
+        other_color = "white" if self.black_turn else "black"
+
+        # handle captures
+        capture_happened = False
+        for group in list(get_stone_groups(self.board, other_color)):
+            if has_no_liberties(self.board, group):
+                capture_happened = True
+                for i, j in group:
+                    self.board[i, j] = 0
+                self.prisoners[self_color] += len(group)
+
+        # handle special case of invalid stone placement
+        # this must be done separately because we need to know if capture resulted
+        if not capture_happened:
+            group = None
+            for group in get_stone_groups(self.board, self_color):
+                if (col, row) in group:
+                    break
+            if has_no_liberties(self.board, group):
+                self.ZOINK.play()
+                self.board[col, row] = 0
+                return
+
+        # change turns and draw screen
+        self.CLICK.play()
+        self.black_turn = not self.black_turn
+
     def handle_click(self):
         # get board position
         x, y = pygame.mouse.get_pos()
@@ -329,30 +364,7 @@ class Game:
         self.black_turn = not self.black_turn
         self.draw()
 
-    def draw(self):
-        # draw stones - filled circle and antialiased ring
-        self.clear_screen()
-        for col, row in zip(*np.where(self.board == 1)):
-            x, y = colrow_to_xy(col, row, self.size)
-            gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, BLACK)
-            gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, BLACK)
-        for col, row in zip(*np.where(self.board == 2)):
-            x, y = colrow_to_xy(col, row, self.size)
-            gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, WHITE)
-            gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, WHITE)
-
-        sgfmill_board = SgfBoard(19)
-        black_points = list(zip(*np.where(self.board == 1)))
-        white_points = list(zip(*np.where(self.board == 2)))
-        empty_points = list(zip(*np.where(self.board == 0)))
-        sgfmill_board.apply_setup(black_points, white_points, empty_points)
-
-        placeholder_move = (-1, -1)
-        board, _ = data_point(
-            sgfmill_board, placeholder_move, "black" if self.black_turn else "white"
-        )
-
-        assert(board.shape==(1,19,19))
+    def predict(self, board):
         num_bin_input_features = modelconfigs.get_num_bin_input_features(model_config)
         input_spatial = board.unsqueeze(0).repeat(num_bin_input_features, 1, 1, 1) #board[np.newaxis, :, :]  # feature plane, batch, 19, 19
         assert(input_spatial.shape==(22,1,19,19))
@@ -386,10 +398,54 @@ class Game:
         # Then, use argmax to find the index of the highest score
         prediction = out_policy_flattened.argmax(dim=1)
 
+        k = 10
+        top_k_pred_indices = out_policy_flattened.topk(k, dim=1).indices[0]
+        assert(prediction==top_k_pred_indices[0])
+
         # prediction = out_policy.argmax(dim=1, keepdim=True)
         x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
+
+        def notLegal(x, y):
+            if x < 0 or x >= BOARD_SIZE or y < 0 or y >= BOARD_SIZE:
+                return True
+            if self.board[x][y] != 0:
+                return True
+            return False
         
+        while notLegal(x, y):
+            # choose next best move
+            top_k_pred_indices = top_k_pred_indices[1:]
+            if top_k_pred_indices.shape[0] > 0:
+                prediction = top_k_pred_indices[0]
+                x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
+            else:
+                # no legal moves, pass
+                x, y = -1, -1
+                break
+
         print("Prediction: ({}, {})".format(x, y))
+        self.x = x
+        self.y = y
+        return x, y
+
+    def draw(self):
+        
+        sgfmill_board = SgfBoard(19)
+        black_points = list(zip(*np.where(self.board == 1)))
+        white_points = list(zip(*np.where(self.board == 2)))
+        empty_points = list(zip(*np.where(self.board == 0)))
+        sgfmill_board.apply_setup(black_points, white_points, empty_points)
+
+        placeholder_move = (-1, -1)
+        board, _ = data_point(
+            sgfmill_board, placeholder_move, "black" if self.black_turn else "white"
+        )
+
+        assert(board.shape==(1,19,19))
+        
+        x, y = self.predict(board)
+
+        self.board[x][y] = 1 if self.black_turn else 2
 
         # make a play and update game state
         loc = gs.board.loc(x, y)
@@ -408,6 +464,17 @@ class Game:
             post_AI_POS[1] - text_rect.height // 2,
         )
         self.screen.blit(pointer, post_AI_POS_ADJUSTED)
+
+        # draw stones - filled circle and antialiased ring
+        self.clear_screen()
+        for col, row in zip(*np.where(self.board == 1)):
+            x, y = colrow_to_xy(col, row, self.size)
+            gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, BLACK)
+            gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, BLACK)
+        for col, row in zip(*np.where(self.board == 2)):
+            x, y = colrow_to_xy(col, row, self.size)
+            gfxdraw.aacircle(self.screen, x, y, STONE_RADIUS, WHITE)
+            gfxdraw.filled_circle(self.screen, x, y, STONE_RADIUS, WHITE)
 
         # x, y = preAImodel(self.board, self.black_turn)
         # pre_AI_POS = colrow_to_xy(x, y, self.size)
@@ -438,6 +505,7 @@ class Game:
 
     def update(self):
         # TODO: undo button
+        self.play()
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.MOUSEBUTTONUP:
