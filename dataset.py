@@ -3,16 +3,24 @@ import numpy as np
 import torch
 from sgfmill import sgf, sgf_moves
 import codecs
-
+from models.katago.board import Board as KataBoard
 from config import BOARD_SIZE, SPLIT_RATIO
+
+class GameState:
+    def __init__(self, board_size):
+        self.board_size = board_size
+        self.board = KataBoard(size=board_size)
+        self.moves = []
+        self.boards = [self.board.copy()]
+
 
 game_files = os.popen("""find . -type f | grep '.sgf'""").read().split('\n')[:-1]
 
-def training_point(board, move, color):
-    board_array = torch.zeros((1, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
-    for p in board.list_occupied_points():
-        board_array[0, p[1][0], p[1][1]] = 1 if p[0] == 'b' else 2 #-1.0 + 2 * int(p[0] == color)
-    return board_array, move[0]*BOARD_SIZE+move[1]
+def training_point(gsboard, move, color):
+    # board_array = torch.zeros((1, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
+    # for p in board.list_occupied_points():
+    #     board_array[0, p[1][0], p[1][1]] = 1 if p[0] == 'b' else 2 #-1.0 + 2 * int(p[0] == color)
+    return gsboard.board, move[0]*BOARD_SIZE+move[1]
 
 afterAIfiles = []
 for filePath in game_files:
@@ -24,10 +32,9 @@ for filePath in game_files:
             if year.isdigit():
                 if int(year) >= 2016:
                     afterAIfiles.append(filePath)
-
+afterAIfiles = afterAIfiles[:10]
 num_games = len(afterAIfiles)
 num_training_games = int(num_games * SPLIT_RATIO)
-print(len(afterAIfiles))
 training_game_files = afterAIfiles[:num_training_games]
 training_points = []
 
@@ -41,6 +48,7 @@ def get_training_data(train_or_test):
         game_files = testing_game_files
 
     for i, game_file in enumerate(game_files):
+        gs = GameState(BOARD_SIZE)
         print('Processing %s/%s: %s' % (i, len(game_files), game_file))
         num_moves = 0
 
@@ -68,7 +76,11 @@ def get_training_data(train_or_test):
         for color, move in plays:
             if move is None: continue
             row, col = move
-            tp = training_point(board, move, color)
+            loc = gs.board.loc(row, col)
+            pla = gs.board.pla
+            if not gs.board.board[loc]:
+                gs.board.play(pla,loc)
+            tp = training_point(gs.board, move, color)
             if train_or_test == "train":
                 training_points.append(tp)
             else:
@@ -94,9 +106,3 @@ training_dataset = GoDataset(training_points)
 test_dataset = GoDataset(testing_points)
 train_loader = torch.utils.data.DataLoader(training_dataset, batch_size=64, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1000, shuffle=True)
-
-for batch_idx, (data, target) in enumerate(train_loader):
-    print(f'A batch has {data.shape} and {target.shape}')
-    print(data)
-    print(target)
-    break
