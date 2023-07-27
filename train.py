@@ -105,13 +105,22 @@ def predict(board):
     out_policy, out_value, out_miscvalue, out_moremiscvalue, out_ownership, out_scoring, out_futurepos, out_seki, out_scorebelief_logprobs = output
     # out_policy (1, num_moves, board_size)
     # First, reshape the tensor to flatten the last two dimensions
+    # ([1, 6, 362]) -> ([1, 2172])
     out_policy_flattened = out_policy.view(out_policy.shape[0], -1)
-    return out_policy_flattened.detach().numpy()[0]
+    # print(out_policy_flattened)
+
+    
+    print("future pos ", out_futurepos.shape)
+    # ([1, 2, 19, 19]) -> ([1, 722])
+    out_futurepos_flattened = out_futurepos.view(out_futurepos.shape[0], -1)
+    print("out_futurepos_flattened.shape ", out_futurepos_flattened.shape)
+    return out_futurepos_flattened.detach().numpy()[0]
+    # return out_policy_flattened.detach().numpy()[0]
     # Then, use argmax to find the index of the highest score
-    prediction = out_policy_flattened.argmax(dim=1)[0]
+    prediction = out_futurepos_flattened.argmax(dim=1)[0]
 
     k = 10
-    top_k_pred_indices = out_policy_flattened.topk(k, dim=1).indices[0]
+    top_k_pred_indices = out_futurepos_flattened.topk(k, dim=1).indices[0]
     assert(prediction==top_k_pred_indices[0])
 
     # x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
@@ -151,8 +160,11 @@ def train(model, device, train_loader, optimizer, epoch):
     
         # We then stack the outputs to create a single tensor.
         output = torch.stack(outputs)
-
-        loss = F.nll_loss(output, torch.tensor(target))
+        print(output.shape)
+        print(output)
+        print(target.shape)
+        print(target)
+        loss = F.nll_loss(F.log_softmax(output), torch.tensor(target))
         loss.requires_grad = True
         loss.backward()
         optimizer.step()
@@ -170,7 +182,7 @@ def test(model, device, test_loader):
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            outputs = [torch.tensor(predict(board)) for board in data[:, 0, :, :]]
+            outputs = [torch.tensor(predict(board)) for board in data]
     
         # We then stack the outputs to create a single tensor.
             output = torch.stack(outputs)
