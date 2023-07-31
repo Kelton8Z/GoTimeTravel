@@ -33,9 +33,8 @@ rules = {
     "whiteKomi": 7.5,
     "asymPowersOfTwo": 0.0,
 }
-model_kind = "b18c384nbt"
-model_config = modelconfigs.config_of_name[model_kind]
-feats = features.Features(model_config, BOARD_SIZE)
+
+
 
 def get_input_feature(gs, rules, feature_idx):
     board = gs.board
@@ -110,47 +109,16 @@ def predict(board):
     # print(out_policy_flattened)
 
     
-    print("future pos ", out_futurepos.shape)
     # ([1, 2, 19, 19]) -> ([1, 722])
     out_futurepos_flattened = out_futurepos.view(out_futurepos.shape[0], -1)
-    print("out_futurepos_flattened.shape ", out_futurepos_flattened.shape)
     return out_futurepos_flattened.detach().numpy()[0]
-    # return out_policy_flattened.detach().numpy()[0]
-    # Then, use argmax to find the index of the highest score
-    prediction = out_futurepos_flattened.argmax(dim=1)[0]
 
-    k = 10
-    top_k_pred_indices = out_futurepos_flattened.topk(k, dim=1).indices[0]
-    assert(prediction==top_k_pred_indices[0])
-
-    # x, y = prediction // BOARD_SIZE, prediction % BOARD_SIZE
-
-    def notLegal(prediction, board):
-        if prediction < 0 or prediction >= len(board):
-            return True
-
-        if board[prediction] != 0:
-            return True
-        return False
-    
-    while notLegal(prediction, board):
-        # choose next best move
-        top_k_pred_indices = top_k_pred_indices[1:]
-        if top_k_pred_indices.shape[0] > 0:
-            prediction = top_k_pred_indices[0]
-        else:
-            # no legal moves, pass
-            prediction = -1
-            break
-
-    assert(prediction)
-    
-    return prediction
 
 def train(model, device, train_loader, optimizer, epoch):
     
     losses = []
     model.train()
+
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -160,10 +128,10 @@ def train(model, device, train_loader, optimizer, epoch):
     
         # We then stack the outputs to create a single tensor.
         output = torch.stack(outputs)
-        print(output.shape)
-        print(output)
-        print(target.shape)
-        print(target)
+        # print(output.shape)
+        # print(output)
+        # print(target.shape)
+        # print(target)
         loss = F.nll_loss(F.log_softmax(output), torch.tensor(target))
         loss.requires_grad = True
         loss.backward()
@@ -173,6 +141,7 @@ def train(model, device, train_loader, optimizer, epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
+            
     return losses
 
 def test(model, device, test_loader):
@@ -196,9 +165,7 @@ def test(model, device, test_loader):
         100. * correct / len(test_loader.dataset)))
     return (float(correct) / len(test_loader.dataset))
 
-model_kind = "b18c384nbt"
-model_config = modelconfigs.config_of_name[model_kind]
-postAImodel = Model(model_config, BOARD_SIZE)
+
 ckpt_file = "./models/katago/kata1-b18c384nbt-s7041524736-d3540025399/model.ckpt"
 # checkpoint = torch.load("./models/katago/kata1-b18c384nbt-s6981484800-d3524616345/model.ckpt")
 use_swa = False
@@ -207,19 +174,22 @@ ckpt, swa_checkpoint, _ = load_model(
 )  # return (model, swa_model, other_state_dict)
 preAImodel = ckpt  # .load_state_dict(swa_checkpoint)
 postAImodel = ckpt
+model_config = postAImodel.config
+feats = features.Features(model_config, BOARD_SIZE)
 optimizer = optim.SGD(postAImodel.parameters(), lr=0.01, momentum=0.5)
 
 losses = []
 accuracies = []
-for epoch in range(0, 10):
+for epoch in range(0, 1000):
     losses.extend(train(postAImodel, device, train_loader, optimizer, epoch))
     accuracies.append(test(postAImodel, device, test_loader))
     print(accuracies[-1])
 # losses = [item for sublist in losses for item in sublist]
 
-torch.save({'epoch': 10,
-              'model_state_dict': postAImodel.state_dict(),
+torch.save({'epoch': 1000,
+              'model': postAImodel.state_dict(),
               'optimizer_state_dict': optimizer.state_dict(),
               'loss': losses[-1],
-              'acc': accuracies[-1]}, 
-        './katago_afterAImodel_checkpoint.pth')
+              'acc': accuracies[-1],
+              "config": postAImodel.config}, 
+        './katago_1989-2015_1000epoch.pth')
