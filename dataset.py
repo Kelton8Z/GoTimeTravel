@@ -32,7 +32,7 @@ for filePath in game_files:
             if year.isdigit():
                 if int(year) >= 2016:
                     afterAIfiles.append(filePath)
-afterAIfiles = afterAIfiles[:10]
+
 num_games = len(afterAIfiles)
 num_training_games = int(num_games * SPLIT_RATIO)
 training_game_files = afterAIfiles[:num_training_games]
@@ -60,34 +60,42 @@ def get_training_data(train_or_test):
                 with codecs.open(game_file, 'r', encoding='utf-8') as f:
                     contents = f.read()
             except:
-                with codecs.open(game_file, 'r', encoding='gbk') as f:
-                    contents = f.read()
+                try:
+                    with codecs.open(game_file, 'r', encoding='gbk') as f:
+                        contents = f.read()
+                except:
+                    continue
 
         # add missing ; in the pdg dataset as valid sgf defines properties with (;
         if contents[0] == "(" and contents[1] != ";":
             contents = contents[:1] + ";" + contents[2:]
 
+        try:
+            game = sgf.Sgf_game.from_string(contents)
+            board, plays = sgf_moves.get_setup_and_moves(game)
 
-        game = sgf.Sgf_game.from_string(contents)
-        board, plays = sgf_moves.get_setup_and_moves(game)
+            assert all(all(cell is None for cell in row) for row in board.board) # board starts out as empty
 
-        assert all(all(cell is None for cell in row) for row in board.board) # board starts out as empty
-
-        for color, move in plays:
-            if move is None: continue
-            row, col = move
-            loc = gs.board.loc(row, col)
-            pla = gs.board.pla
-            if not gs.board.board[loc]:
-                gs.board.play(pla,loc)
-            tp = training_point(gs.board, move, color)
-            if train_or_test == "train":
-                training_points.append(tp)
-            else:
-                testing_points.append(tp)
-            if not board.board[row][col]:
-                board.play(row, col, color)
-            num_moves += 1
+            for color, move in plays:
+                if move is None: continue
+                row, col = move
+                loc = gs.board.loc(row, col)
+                pla = gs.board.pla
+                if not gs.board.board[loc]:
+                    try:
+                        gs.board.play(pla,loc)
+                    except:
+                        break
+                tp = training_point(gs.board, move, color)
+                if train_or_test == "train":
+                    training_points.append(tp)
+                else:
+                    testing_points.append(tp)
+                if not board.board[row][col]:
+                    board.play(row, col, color)
+                num_moves += 1
+        except:
+            pass
 
     print(f'Total %s moves: %s', "training" if train_or_test == "train" else "testing", len(training_points) if train_or_test == "train" else len(testing_points))
 
